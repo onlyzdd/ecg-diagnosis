@@ -1,0 +1,9 @@
+.vscode
+__pycache__
+
+data/**/*.mat
+data/**/*.hea
+data/**/*.csv
+models/*.pth
+results/*.png
+logs/*.log
