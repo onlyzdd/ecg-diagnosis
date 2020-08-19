@@ -1,16 +1,11 @@
-from dataset import T_co
-from typing import TypeVar
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torch.nn.modules import padding
 
-
-T_co = TypeVar('T_co', covariant=True)
 
 class BasicBlock1d(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None) -> None:
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
         super(BasicBlock1d, self).__init__()
         self.conv1 = nn.Conv1d(inplanes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm1d(planes)
@@ -20,7 +15,7 @@ class BasicBlock1d(nn.Module):
         self.bn2 = nn.BatchNorm1d(planes)
         self.downsample = downsample
     
-    def forward(self, x) -> T_co:
+    def forward(self, x):
         residual = x
         out = self.conv1(x)
         out = self.bn1(out)
@@ -36,7 +31,7 @@ class BasicBlock1d(nn.Module):
 
 
 class ResNet1d(nn.Module):
-    def __init__(self, block, layers, input_channels, inplanes=64, num_classes=9) -> None:
+    def __init__(self, block, layers, input_channels, inplanes=64, num_classes=9):
         super(ResNet1d, self).__init__()
         self.inplanes = inplanes
         self.conv1 = nn.Conv1d(input_channels, self.inplanes, kernel_size=3, stride=2, padding=1, bias=False)
@@ -66,7 +61,7 @@ class ResNet1d(nn.Module):
             layers.append(block(self.inplanes, planes))
         return nn.Sequential(*layers)
 
-    def forward(self, x) -> T_co:
+    def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -78,6 +73,12 @@ class ResNet1d(nn.Module):
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         return self.fc(x)
+
+
+def resnet18(**kwargs):
+    model = ResNet1d(BasicBlock1d, [2, 2, 2, 2], **kwargs)
+    return model
+
 
 def resnet34(**kwargs):
     model = ResNet1d(BasicBlock1d, [3, 4, 6, 3], **kwargs)
