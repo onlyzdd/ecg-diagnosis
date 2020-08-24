@@ -1,29 +1,138 @@
 import argparse
-from glob import glob
 import os
 
 import numpy as np
+import pandas as pd
 import torch
 import shap
+from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from resnet import resnet34
 from utils import prepare_input
 
 
-if __name__ == "__main__":
+def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input-dir', type=str, default='data/CPSC', help='Data directory')
+    parser.add_argument('--data-dir', type=str, default='data/CPSC', help='Data directory')
+    parser.add_argument('--leads', type=str, default='all')
+    parser.add_argument('--seed', type=int, default=42, help='Seed to split data')
     parser.add_argument('--use-gpu', default=False, action='store_true', help='Use GPU')
-    parser.add_argument('--model-path', type=str, default='models/resnet34.pth')
-    args = parser.parse_args()
-    inputs = glob(os.path.join(args.input_dir, 'A001*.mat'))
-    inputs = torch.stack([torch.from_numpy(prepare_input(input0)).float() for input0 in inputs])
+    return parser.parse_args()
+
+
+def plot_shap(ecg_data, sv_data, top_leads, patient_id, label):
+    """plot ecg with shap values"""
+    leads = np.array(['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'])
+    nleads = len(top_leads)
+    if nleads == 0:
+        return
+    nsteps = 5000 # ecg_data.shape[1]
+    x = range(nsteps)
+    ecg_data = ecg_data[:, -nsteps:]
+    sv_data = sv_data[:, -nsteps:]
+    threshold = 0.001
+    fig, axs = plt.subplots(nleads, figsize=(9, nleads))
+    fig.suptitle(label)
+    for i, lead in enumerate(top_leads):
+        sv_upper = np.ma.masked_where(sv_data[lead] >= threshold, ecg_data[lead])
+        sv_lower = np.ma.masked_where(sv_data[lead] < threshold, ecg_data[lead])
+        if nleads == 1:
+            axe = axs
+        else:
+            axe = axs[i]
+        axe.plot(x, sv_upper, x, sv_lower)
+        axe.set_xticks([])
+        axe.set_yticks([])
+        axe.set_ylabel(leads[lead])
+    plt.savefig(f'shap/{patient_id}.png')
+    plt.close(fig)
+
+
+def summary_plot(svs, y_scores):
+    leads = np.array(['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'])
+    svs2 = []
+    n = y_scores.shape[0]
+    for i in tqdm(range(n)):
+        label = np.argmax(y_scores[i])
+        sv_data = svs[label, i]
+        svs2.append(np.sum(sv_data, axis=1))
+    svs2 = np.vstack(svs2)
+    svs_data = np.mean(svs2, axis=0)
+    plt.plot(leads, svs_data)
+    plt.savefig('./shap/summary.png')
+    plt.clf()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    data_dir = os.path.normpath(args.data_dir)
+    database = os.path.basename(data_dir)
+    args.model_path = f'models/resnet34_{database}_{args.leads}_{args.seed}.pth'
+    label_csv = os.path.join(data_dir, 'labels.csv')
+    reference_csv = os.path.join(data_dir, 'reference.csv')
+    lleads = np.array(['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'])
+    classes = np.array(['SNR', 'AF', 'IAVB', 'LBBB', 'RBBB', 'PAC', 'PVC', 'STD', 'STE'])
     if args.use_gpu and torch.cuda.is_available():
         device = torch.device('cuda:0')
     else:
         device = 'cpu'
-    model = resnet34(input_channels=12).to(device)
-    model.load_state_dict(torch.load(args.model_path))
-    e = shap.GradientExplainer(model, inputs)
-    sv = e.shap_values(inputs)
-    np.save('results/A001.npy', sv)
+    if args.leads == 'all':
+        leads = 'all'
+        nleads = 12
+    else:
+        leads = args.leads.split(',')
+        nleads = len(leads)
+    
+    model = resnet34(input_channels=nleads).to(device)
+    model.load_state_dict(torch.load(args.model_path, map_location=device))
+    model.eval()
+
+    background = 100
+    result_path = f'results/A{background * 2}.npy'
+
+    df_labels = pd.read_csv(label_csv)
+    df_reference = pd.read_csv(os.path.join(args.data_dir, 'reference.csv'))
+    df = pd.merge(df_labels, df_reference[['patient_id', 'age', 'sex', 'signal_len']], on='patient_id', how='left')
+
+    # df = df[df['signal_len'] >= 15000]
+
+    patient_ids = df['patient_id'].to_numpy()
+    to_explain = patient_ids[:background * 2]
+
+    background_patient_ids = df.head(background)['patient_id'].to_numpy()
+    background_inputs = [os.path.join(data_dir, patient_id) for patient_id in background_patient_ids]
+    background_inputs = torch.stack([torch.from_numpy(prepare_input(input)).float() for input in background_inputs]).to(device)
+    
+    e = shap.GradientExplainer(model, background_inputs)
+
+    if not os.path.exists(result_path):
+        svs = []
+        y_scores = []
+        for patient_id in tqdm(to_explain):
+            input = os.path.join(data_dir, patient_id)
+            inputs = torch.stack([torch.from_numpy(prepare_input(input)).float()]).to(device)
+            y_scores.append(torch.sigmoid(model(inputs)).detach().cpu().numpy())
+            sv = np.array(e.shap_values(inputs)) # (n_classes, n_samples, n_leads, n_points)
+            svs.append(sv)
+        svs = np.concatenate(svs, axis=1)
+        y_scores = np.concatenate(y_scores, axis=0)
+        np.save(result_path, (svs, y_scores))
+    svs, y_scores = np.load(result_path, allow_pickle=True)
+
+    # summary_plot(svs, y_scores)
+
+    preds = []
+    top_leads_list = []
+    for i, patient_id in enumerate(to_explain):
+        ecg_data = prepare_input(os.path.join(data_dir, patient_id))
+        label_idx = np.argmax(y_scores[i])
+        sv_data = svs[label_idx, i]
+        
+        sv_data_mean = np.mean(sv_data, axis=1)
+        top_leads = np.where(sv_data_mean > 1e-4)[0]
+        preds.append(classes[label_idx])
+        print(patient_id, classes[label_idx], lleads[top_leads])
+
+        plot_shap(ecg_data, sv_data, top_leads, patient_id, classes[label_idx])
+        

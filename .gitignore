@@ -1,9 +1,16 @@
 .vscode
 __pycache__
 
+*.bak
+
 data/**/*.mat
 data/**/*.hea
 data/**/*.csv
+imgs/*.png
 models/*.pth
 results/*.png
+results/*.csv
+results/*.npy
+logs/ecg-*
 logs/*.log
+shap/*.png
