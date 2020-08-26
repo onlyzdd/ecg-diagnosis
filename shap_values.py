@@ -22,16 +22,16 @@ def parse_args():
 
 
 def plot_shap(ecg_data, sv_data, top_leads, patient_id, label):
-    """plot ecg with shap values"""
+    # patient-level interpretation along with raw ECG data
     leads = np.array(['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'])
     nleads = len(top_leads)
     if nleads == 0:
         return
-    nsteps = 5000 # ecg_data.shape[1]
+    nsteps = 5000 # ecg_data.shape[1], visualize last 10 s since many patients' ECG are <=10 s
     x = range(nsteps)
     ecg_data = ecg_data[:, -nsteps:]
     sv_data = sv_data[:, -nsteps:]
-    threshold = 0.001
+    threshold = 0.001 # set threshold to highlight features with high shap values
     fig, axs = plt.subplots(nleads, figsize=(9, nleads))
     fig.suptitle(label)
     for i, lead in enumerate(top_leads):
@@ -45,7 +45,7 @@ def plot_shap(ecg_data, sv_data, top_leads, patient_id, label):
         axe.set_xticks([])
         axe.set_yticks([])
         axe.set_ylabel(leads[lead])
-    plt.savefig(f'shap/{patient_id}.png')
+    plt.savefig(f'shap/shap1-{patient_id}.png')
     plt.close(fig)
 
 
@@ -63,6 +63,30 @@ def summary_plot(svs, y_scores):
     plt.savefig('./shap/summary.png')
     plt.clf()
 
+
+def plot_shap2(svs, y_scores):
+    # population-level interpretation
+    leads = np.array(['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'])
+    n = y_scores.shape[0]
+    results = [[], [], [], [], [], [], [], [], []]
+    print(svs.shape)
+    for i in tqdm(range(n)):
+        label = np.argmax(y_scores[i])
+        results[label].append(svs[label, i])
+    ys = []
+    for label in range(y_scores.shape[1]):
+        result = np.array(results[label])
+        y = []
+        for i, _ in enumerate(leads):
+            y.append(result[:,i].sum())
+        y = np.array(y) / np.sum(y)
+        ys.append(y)
+        plt.plot(leads, y)
+    plt.plot(leads, np.array(ys).mean(axis=0))
+    plt.legend(['SNR', 'AF', 'IAVB', 'LBBB', 'RBBB', 'PAC', 'PVC', 'STD', 'STE'] + ['AVG'])
+    plt.savefig('./shap/shap2.png')
+    plt.clf()
+    
 
 if __name__ == "__main__":
     args = parse_args()
@@ -121,6 +145,7 @@ if __name__ == "__main__":
     svs, y_scores = np.load(result_path, allow_pickle=True)
 
     # summary_plot(svs, y_scores)
+    plot_shap2(svs, y_scores)
 
     preds = []
     top_leads_list = []
@@ -130,9 +155,8 @@ if __name__ == "__main__":
         sv_data = svs[label_idx, i]
         
         sv_data_mean = np.mean(sv_data, axis=1)
-        top_leads = np.where(sv_data_mean > 1e-4)[0]
+        top_leads = np.where(sv_data_mean > 1e-4)[0] # select top leads
         preds.append(classes[label_idx])
         print(patient_id, classes[label_idx], lleads[top_leads])
 
         plot_shap(ecg_data, sv_data, top_leads, patient_id, classes[label_idx])
-        
