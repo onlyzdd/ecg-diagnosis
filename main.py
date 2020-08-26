@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument('--epochs', type=int, default=40, help='Training epochs')
     parser.add_argument('--resume', default=False, action='store_true', help='Resume')
     parser.add_argument('--use-gpu', default=False, action='store_true', help='Use GPU')
+    parser.add_argument('--model-path', type=str, default='', help='Path to saved model')
     return parser.parse_args()
 
 
@@ -82,7 +83,9 @@ if __name__ == "__main__":
     args.best_metric = 0
     data_dir = os.path.normpath(args.data_dir)
     database = os.path.basename(data_dir)
-    args.model_path = f'models/resnet34_{database}_{args.leads}_{args.seed}.pth'
+
+    if not args.model_path:
+        args.model_path = f'models/resnet34_{database}_{args.leads}_{args.seed}.pth'
 
     if args.use_gpu and torch.cuda.is_available():
         device = torch.device('cuda:0')
