@@ -15,7 +15,7 @@ def prepare_input(ecg_file: str):
     ecg_data, _ = wfdb.rdsamp(ecg_file)
     nsteps, nleads = ecg_data.shape
     ecg_data = ecg_data[-15000:, :]
-    result = np.zeros((15000, nleads)) # 10 s, 500 Hz
+    result = np.zeros((15000, nleads)) # 30 s, 500 Hz
     result[-nsteps:, :] = ecg_data
     return result.transpose()
 
