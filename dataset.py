@@ -50,8 +50,7 @@ class ECGDataset(Dataset):
         row = self.labels.iloc[index]
         patient_id = row['patient_id']
         ecg_data, _ = wfdb.rdsamp(os.path.join(self.data_dir, patient_id))
-        if self.phase == 'train':
-            ecg_data = transform(ecg_data)
+        ecg_data = transform(ecg_data, self.phase == 'train')
         nsteps, _ = ecg_data.shape
         ecg_data = ecg_data[-15000:, self.use_leads]
         result = np.zeros((15000, self.nleads)) # 30 s, 500 Hz

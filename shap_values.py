@@ -64,7 +64,7 @@ def summary_plot(svs, y_scores):
     plt.clf()
 
 
-def plot_shap2(svs, y_scores):
+def plot_shap2(svs, y_scores, cmap=plt.cm.Blues):
     # population-level interpretation
     leads = np.array(['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'])
     n = y_scores.shape[0]
@@ -82,13 +82,31 @@ def plot_shap2(svs, y_scores):
         y = np.array(y) / np.sum(y)
         ys.append(y)
         plt.plot(leads, y)
-    plt.plot(leads, np.array(ys).mean(axis=0))
-    plt.legend(['SNR', 'AF', 'IAVB', 'LBBB', 'RBBB', 'PAC', 'PVC', 'STD', 'STE'] + ['AVG'])
+    ys.append(np.array(ys).mean(axis=0))
+    ys = np.array(ys)
+    fig, axs = plt.subplots()
+    im = axs.imshow(ys, cmap=cmap)
+    axs.figure.colorbar(im, ax=axs)
+    fmt = '.2f'
+    xlabels = leads
+    ylabels = ['SNR', 'AF', 'IAVB', 'LBBB', 'RBBB', 'PAC', 'PVC', 'STD', 'STE'] + ['AVG']
+    axs.set_xticks(np.arange(len(xlabels)))
+    axs.set_yticks(np.arange(len(ylabels)))
+    axs.set_xticklabels(xlabels)
+    axs.set_yticklabels(ylabels)
+    thresh = ys.max() / 2
+    for i in range(ys.shape[0]):
+        for j in range(ys.shape[1]):
+            axs.text(j, i, format(ys[i, j], fmt),
+                    ha='center', va='center',
+                    color='white' if ys[i, j] > thresh else 'black')
+    np.set_printoptions(precision=2)
+    fig.tight_layout()
     plt.savefig('./shap/shap2.png')
     plt.clf()
     
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     args = parse_args()
     data_dir = os.path.normpath(args.data_dir)
     database = os.path.basename(data_dir)
