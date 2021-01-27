@@ -23,7 +23,7 @@ The 12-lead ECG dataset used in this study is the CPSC2018 training dataset whic
 - PyTorch 1.2.0
 - Scikit-learn 0.21.3
 - Scipy 1.3.1
-- Shap 1.0.1
+- Shap 0.35.1
 - Tqdm 4.36.1
 - Wfdb 2.2.1
 
